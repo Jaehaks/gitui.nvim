@@ -17,6 +17,14 @@ local function get_repo_root(bufnr)
 	return root
 end
 
+---@return string Absolute path of plugin root
+local function get_plugin_root()
+	local source_file = debug.getinfo(1, "S").source:sub(2) -- get current executing file path
+	local plugin_root = vim.fs.root(source_file, {'.git'}) -- get plugin root
+	return plugin_root or ""
+end
+
+
 ---@param bufnr integer buffer number
 local function set_terminal_options(bufnr)
 	vim.api.nvim_set_option_value('buflisted', false, {buf = bufnr}) -- remove at :ls
@@ -79,6 +87,9 @@ function M.open(opts)
 		set_autoinsert(gitui.bufnr, opts.delay_startinsert)
 	end
 
+	-- set terminal buffer property
+	set_terminal_options(gitui.bufnr)
+
 	-- set editor cmd to connect commit editor to this neovim
 	-- nvim --server <server ip> : If you open internal terminal in neovim and open some file using nvim,
 	-- 							   the terminal use already opened neovim instance instead of new instance.
@@ -88,7 +99,8 @@ function M.open(opts)
 	local editor_cmd = string.format("nvim --server %s --remote-wait", server)
 
 	-- open gitui terminal
-	gitui.jobnr = vim.fn.jobstart({'gitui'}, {
+	local cmd = {'gitui', '-t', opts.theme_path or get_plugin_root() .. '/data/theme.ron'}
+	gitui.jobnr = vim.fn.jobstart(cmd, {
 		term = true, -- open in terminal buffer
 		env = {
 			GIT_EDITOR = editor_cmd,
