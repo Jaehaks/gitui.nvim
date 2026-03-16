@@ -17,6 +17,13 @@ local function get_root(bufnr)
 	return root
 end
 
+---@param bufnr integer buffer number
+local function set_terminal_options(bufnr)
+	vim.api.nvim_set_option_value('buflisted', false, {buf = bufnr}) -- remove at :ls
+	vim.api.nvim_set_option_value('bufhidden', 'wipe', {buf = bufnr}) -- wipe from memory when closed
+	vim.api.nvim_set_option_value('swapfile', false, {buf = bufnr}) -- don't make swap file
+end
+
 --- terminal gitui terminal
 local function terminate_term()
 	-- remove buffer
@@ -94,12 +101,6 @@ function M.open(opts)
 			end)
 		end
 	})
-
-	-- set terminal buffer property
-	vim.api.nvim_set_option_value('buflisted', false, {buf = gitui.bufnr}) -- remove at :ls
-	vim.api.nvim_set_option_value('bufhidden', 'wipe', {buf = gitui.bufnr}) -- wipe from memory when closed
-	vim.api.nvim_set_option_value('swapfile', false, {buf = gitui.bufnr}) -- don't make swap file
-
 end
 
 
