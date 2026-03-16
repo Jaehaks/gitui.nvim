@@ -70,6 +70,20 @@ end
 --- open gitui
 ---@param opts gitui.config
 function M.open(opts)
+
+	-- if the gitui is opened already, focus it.
+	if gitui.tabnr and vim.api.nvim_tabpage_is_valid(gitui.tabnr) then
+		vim.api.nvim_set_current_tabpage(gitui.tabnr)
+		for _, win in ipairs(vim.api.nvim_tabpage_list_wins(gitui.tabnr)) do
+			if vim.api.nvim_win_get_buf(win) == gitui.bufnr then
+				vim.api.nvim_set_current_win(win)
+				vim.cmd('startinsert')
+				break
+			end
+		end
+		return
+	end
+
 	-- check cwd is git repository
 	local root = get_repo_root(vim.api.nvim_get_current_buf())
 	if not root then
