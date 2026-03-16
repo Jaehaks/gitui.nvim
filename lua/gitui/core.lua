@@ -12,7 +12,7 @@ local gitui = {
 --- get .git repo root
 ---@param bufnr integer buffer number
 ---@return string? Absolute path of root
-local function get_root(bufnr)
+local function get_repo_root(bufnr)
 	local root = vim.fs.root(bufnr, { '.git' })
 	return root
 end
@@ -63,7 +63,7 @@ end
 ---@param opts gitui.config
 function M.open(opts)
 	-- check cwd is git repository
-	local root = get_root(vim.api.nvim_get_current_buf())
+	local root = get_repo_root(vim.api.nvim_get_current_buf())
 	if not root then
 		vim.notify('[gitui.nvim] current directory is not .git repository', vim.log.levels.ERROR)
 		return
