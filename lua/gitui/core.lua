@@ -9,19 +9,52 @@ local gitui = {
 	jobnr = nil,
 }
 
+--- get .git repo root
+---@param bufnr integer buffer number
+---@return string? Absolute path of root
 local function get_root(bufnr)
 	local root = vim.fs.root(bufnr, { '.git' })
 	return root
 end
 
-local function gitui_state_clear()
+--- terminal gitui terminal
+local function terminate_term()
+	-- remove buffer
+	if gitui.bufnr and vim.api.nvim_buf_is_valid(gitui.bufnr) then
+		pcall(vim.api.nvim_buf_delete, gitui.bufnr, {force = true})
+	end
+	-- remove tab
+	if gitui.tabnr and vim.api.nvim_tabpage_is_valid(gitui.tabnr) then
+		pcall(function () vim.cmd('tabclose ' .. gitui.tabnr) end)
+	end
+	-- reset state
 	for k, _ in pairs(gitui) do
 		gitui[k] = nil
 	end
 end
 
+--- start insert to control gitui immediately when buffer is changed to terminal
+---@param bufnr integer buffer number to set autoinsert autocmd
+---@param delay integer [ms] delay after terminal buffer opened to start insert mode
+local function set_autoinsert(bufnr, delay)
+	vim.api.nvim_create_autocmd('TermOpen', {
+		buffer = bufnr,
+		once = true,
+		callback = function ()
+			vim.defer_fn(function () -- check focus is moved while startinsert delay
+				if vim.api.nvim_get_current_buf() == bufnr then
+					vim.cmd('startinsert')
+				else
+					terminate_term()
+				end
+			end, delay)
+		end
+	})
+end
+
 --- open gitui
-function M.open()
+---@param opts gitui.config
+function M.open(opts)
 	-- check cwd is git repository
 	local root = get_root(vim.api.nvim_get_current_buf())
 	if not root then
@@ -32,6 +65,12 @@ function M.open()
 	-- open new tab
 	vim.cmd("tabnew")
 	gitui.tabnr = vim.api.nvim_get_current_tabpage()
+	gitui.bufnr = vim.api.nvim_get_current_buf()
+
+	-- set autocmd to enter terminal mode automatically
+	if opts.delay_startinsert then
+		set_autoinsert(gitui.bufnr, opts.delay_startinsert)
+	end
 
 	-- set editor cmd to connect commit editor to this neovim
 	-- nvim --server <server ip> : If you open internal terminal in neovim and open some file using nvim,
@@ -51,20 +90,12 @@ function M.open()
 		cwd = root,
 		on_exit = function ()
 			vim.schedule(function ()
-				-- remove buffer
-				if gitui.bufnr and vim.api.nvim_buf_is_valid(gitui.bufnr) then
-					pcall(vim.api.nvim_buf_delete, gitui.bufnr, {force = true})
-				end
-				if gitui.tabnr and vim.api.nvim_tabpage_is_valid(gitui.tabnr) then
-					pcall(function () vim.cmd('tabclose ' .. gitui.tabnr) end)
-				end
-				gitui_state_clear()
+				terminate_term()
 			end)
 		end
 	})
 
 	-- set terminal buffer property
-	gitui.bufnr = vim.api.nvim_get_chan_info(gitui.jobnr).buffer
 	vim.api.nvim_set_option_value('buflisted', false, {buf = gitui.bufnr}) -- remove at :ls
 	vim.api.nvim_set_option_value('bufhidden', 'wipe', {buf = gitui.bufnr}) -- wipe from memory when closed
 	vim.api.nvim_set_option_value('swapfile', false, {buf = gitui.bufnr}) -- don't make swap file
