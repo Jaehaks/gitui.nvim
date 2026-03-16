@@ -51,13 +51,24 @@ function M.open()
 		cwd = root,
 		on_exit = function ()
 			vim.schedule(function ()
-				vim.cmd('tabclose')
+				-- remove buffer
+				if gitui.bufnr and vim.api.nvim_buf_is_valid(gitui.bufnr) then
+					pcall(vim.api.nvim_buf_delete, gitui.bufnr, {force = true})
+				end
+				if gitui.tabnr and vim.api.nvim_tabpage_is_valid(gitui.tabnr) then
+					pcall(function () vim.cmd('tabclose ' .. gitui.tabnr) end)
+				end
+				gitui_state_clear()
 			end)
-			gitui_state_clear()
 		end
 	})
 
+	-- set terminal buffer property
 	gitui.bufnr = vim.api.nvim_get_chan_info(gitui.jobnr).buffer
+	vim.api.nvim_set_option_value('buflisted', false, {buf = gitui.bufnr}) -- remove at :ls
+	vim.api.nvim_set_option_value('bufhidden', 'wipe', {buf = gitui.bufnr}) -- wipe from memory when closed
+	vim.api.nvim_set_option_value('swapfile', false, {buf = gitui.bufnr}) -- don't make swap file
+
 end
 
 
