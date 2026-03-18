@@ -68,20 +68,33 @@ local function set_autoinsert(bufnr, delay)
 	})
 end
 
+--- re-focus specific buffer in tabnr
+---@param tabnr integer
+---@param bufnr integer
+---@return boolean true if terminal is valid
+local function focus_buffer(tabnr, bufnr)
+	if tabnr and vim.api.nvim_tabpage_is_valid(tabnr) then
+		vim.api.nvim_set_current_tabpage(tabnr)
+		for _, win in ipairs(vim.api.nvim_tabpage_list_wins(tabnr)) do
+			if vim.api.nvim_win_get_buf(win) == bufnr then
+				vim.api.nvim_set_current_win(win)
+				if bufnr == gitui.bufnr then
+					vim.cmd('startinsert')
+				end
+				break
+			end
+		end
+		return true
+	end
+	return false
+end
+
 --- open gitui
 ---@param opts gitui.config
 function M.open(opts)
 
 	-- if the gitui is opened already, focus it.
-	if gitui.tabnr and vim.api.nvim_tabpage_is_valid(gitui.tabnr) then
-		vim.api.nvim_set_current_tabpage(gitui.tabnr)
-		for _, win in ipairs(vim.api.nvim_tabpage_list_wins(gitui.tabnr)) do
-			if vim.api.nvim_win_get_buf(win) == gitui.bufnr then
-				vim.api.nvim_set_current_win(win)
-				vim.cmd('startinsert')
-				break
-			end
-		end
+	if focus_buffer(gitui.tabnr, gitui.bufnr) then
 		return
 	end
 
