@@ -28,19 +28,20 @@ end
 ---@param bufnr integer buffer number
 local function set_terminal_options(bufnr)
 	vim.api.nvim_set_option_value('buflisted', false, {buf = bufnr}) -- remove at :ls
-	vim.api.nvim_set_option_value('bufhidden', 'wipe', {buf = bufnr}) -- wipe from memory when closed
+	vim.api.nvim_set_option_value('bufhidden', 'hide', {buf = bufnr}) -- wipe from memory when closed
 	vim.api.nvim_set_option_value('swapfile', false, {buf = bufnr}) -- don't make swap file
 end
 
 --- terminal gitui terminal
 local function terminate_term()
-	-- remove buffer
-	if gitui.bufnr and vim.api.nvim_buf_is_valid(gitui.bufnr) then
-		pcall(vim.api.nvim_buf_delete, gitui.bufnr, {force = true})
-	end
 	-- remove tab
 	if gitui.tabnr and vim.api.nvim_tabpage_is_valid(gitui.tabnr) then
 		pcall(function () vim.cmd('tabclose ' .. gitui.tabnr) end)
+	end
+	-- remove buffer
+	if gitui.bufnr and vim.api.nvim_buf_is_valid(gitui.bufnr) then
+		-- wipe out gitui terminal buffer form buffer list (nvim_buf_delete() cannot wipe out)
+		pcall(function () vim.cmd('silent! bwipeout! ' .. gitui.bufnr) end)
 	end
 	-- reset state
 	for k, _ in pairs(gitui) do
