@@ -106,12 +106,13 @@ function M.open(opts)
 	set_terminal_options(gitui.bufnr)
 
 	-- set editor cmd to connect commit editor to this neovim
-	-- nvim --server <server ip> : If you open internal terminal in neovim and open some file using nvim,
-	-- 							   the terminal use already opened neovim instance instead of new instance.
-	-- --remote-wait : After opening buffer in remote server neovim, wait the process until the opened buffer is closed.
-	-- 				   the terminal is blocked until the opened buffer is closed.
+	-- --remote <file> : the <file> must be absolute file path. If it is relative one, empty file will be open
+	-- 					 open <file> command in a remote neovim.
+	-- --server <servername> : set which neovim instance is used to remote opening.
+	-- 						   If the server is invalid, open in current terminal
+	-- --remote-wait : not implemented yet.
 	local server = vim.v.servername
-	local editor_cmd = string.format("nvim --server %s --remote-wait", server)
+	local editor_cmd = string.format("nvim --server %s --remote", server)
 
 	-- open gitui terminal
 	local cmd = {'gitui', '-t', opts.theme_path or get_plugin_root() .. '/data/theme.ron'}
