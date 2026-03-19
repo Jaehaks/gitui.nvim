@@ -36,12 +36,23 @@ end
 local function terminate_term()
 	-- remove tab
 	if gitui.tabnr and vim.api.nvim_tabpage_is_valid(gitui.tabnr) then
-		pcall(function () vim.cmd('tabclose ' .. gitui.tabnr) end)
+		local ok = pcall(function () vim.cmd('tabclose ' .. vim.api.nvim_tabpage_get_number(gitui.tabnr)) end)
+		if not ok then
+			vim.notify('Tab ' .. gitui.tabnr .. ' cannot be closed', vim.log.levels.WARN)
+		end
 	end
 	-- remove buffer
 	if gitui.bufnr and vim.api.nvim_buf_is_valid(gitui.bufnr) then
 		-- wipe out gitui terminal buffer form buffer list (nvim_buf_delete() cannot wipe out)
-		pcall(function () vim.cmd('silent! bwipeout! ' .. gitui.bufnr) end)
+		local ok pcall(function () vim.cmd('silent! bwipeout! ' .. gitui.bufnr) end)
+		if not ok then
+			vim.notify('Gitui terminal ' .. gitui.bufnr .. ' cannot be removed', vim.log.levels.WARN)
+		end
+		-- disable autocmd for editor opener
+		ok = pcall(vim.api.nvim_del_augroup_by_name, 'GitUI')
+		if not ok then
+			vim.notify('GitUI autocmd cannot be removed', vim.log.levels.WARN)
+		end
 	end
 	-- reset state
 	for k, _ in pairs(gitui) do
