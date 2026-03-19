@@ -17,19 +17,15 @@ local prevbuf = {
 	winnr = nil,
 }
 
+local plugin_root = vim.fs.root(debug.getinfo(1, "S").source:sub(2), {'.git'}) or ""
+local wait_process = plugin_root .. '/lua/gitui/wait/remote_nvim.lua'
+
 --- get .git repo root
 ---@param bufnr integer buffer number
 ---@return string? Absolute path of root
 local function get_repo_root(bufnr)
 	local root = vim.fs.root(bufnr, { '.git' })
 	return root
-end
-
----@return string Absolute path of plugin root
-local function get_plugin_root()
-	local source_file = debug.getinfo(1, "S").source:sub(2) -- get current executing file path
-	local plugin_root = vim.fs.root(source_file, {'.git'}) -- get plugin root
-	return plugin_root or ""
 end
 
 
@@ -125,9 +121,11 @@ local function attach_editor_handle()
 			-- If it is commit message
 			if filename == "COMMIT_EDITMSG" or filename == "MERGE_MSG" then
 				vim.api.nvim_set_option_value('filetype', 'gitcommit', {buf = args.buf})
+				vim.api.nvim_set_option_value('bufhidden', 'wipe', {buf = args.buf}) -- invoke BufDelete event when :wq
+
 				vim.api.nvim_set_current_tabpage(gitui.tabnr)
-				vim.api.nvim_set_current_buf(gitui.bufnr) -- restore focus to gitui terminal to show with split view together
-				vim.cmd("split")
+				-- vim.api.nvim_set_current_buf(gitui.bufnr) -- restore focus to gitui terminal to show with split view together
+				-- vim.cmd("split")
 				vim.api.nvim_set_current_buf(args.buf) -- open target buffer
 
 				-- if commit message writing is completed and close, go to focus
@@ -135,6 +133,11 @@ local function attach_editor_handle()
 					buffer = args.buf,
 					once = true,
 					callback = function()
+						-- if editing commit msg is completed, remove wait_process file and make the wait process terminate
+						if vim.fn.filereadable(wait_process) == 1 then
+							vim.fn.delete(wait_process)
+						end
+
 						vim.schedule(function()
 							focus_buffer(gitui.tabnr, gitui.bufnr)
 						end)
@@ -199,10 +202,11 @@ function M.open(opts)
 	-- 						   If the server is invalid, open in current terminal
 	-- --remote-wait : not implemented yet.
 	local server = vim.v.servername
-	local editor_cmd = string.format("nvim --server %s --remote", server)
+	-- local editor_cmd = string.format("nvim --server %s --remote", server)
+	local editor_cmd = string.format('nvim -l %s %s', wait_process, server)
 
 	-- open gitui terminal
-	local cmd = {'gitui', '-t', opts.theme_path or get_plugin_root() .. '/data/theme.ron'}
+	local cmd = {'gitui', '-t', opts.theme_path or plugin_root .. '/data/theme.ron'}
 	gitui.jobnr = vim.fn.jobstart(cmd, {
 		term = true, -- open in terminal buffer
 		env = {
