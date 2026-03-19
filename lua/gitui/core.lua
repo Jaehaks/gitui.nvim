@@ -3,15 +3,20 @@ local M = {}
 ---@class gitui_state
 ---@field bufnr integer? buffer number of gitui terminal
 ---@field tabnr integer? tab id where gitui is opened
+---@field jobnr integer? job id for gitui process
+
+---@type gitui_state
 local gitui = {
 	bufnr = nil,
 	tabnr = nil,
 	jobnr = nil,
 }
 
----@class prevbuf previous buffer state to open editor from gitui
+---@class prevbuf_state previous buffer state to open editor from gitui
 ---@field tabnr integer?
 ---@field winr integer?
+
+---@type prevbuf_state
 local prevbuf = {
 	tabnr = nil,
 	winnr = nil,
