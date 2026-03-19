@@ -9,6 +9,14 @@ local gitui = {
 	jobnr = nil,
 }
 
+---@class prevbuf previous buffer state to open editor from gitui
+---@field tabnr integer?
+---@field winr integer?
+local prevbuf = {
+	tabnr = nil,
+	winnr = nil,
+}
+
 --- get .git repo root
 ---@param bufnr integer buffer number
 ---@return string? Absolute path of root
@@ -100,6 +108,57 @@ local function focus_buffer(tabnr, bufnr)
 	return false
 end
 
+local function attach_editor_handle()
+	-- when file is attached to open from gitui
+	local augroup = vim.api.nvim_create_augroup("GitUI", { clear = true })
+	vim.api.nvim_create_autocmd("BufEnter", { -- after completing buffer transition
+		group = augroup,
+		callback = function(args)
+			if not gitui.bufnr or not vim.api.nvim_buf_is_valid(gitui.bufnr) then return end
+			-- called nvim from gitui must be opened in gitui.tabnr
+			if vim.api.nvim_get_current_tabpage() ~= gitui.tabnr then return end
+			-- ignore If the buffer is not editable (picker, others)
+			if vim.api.nvim_get_option_value('buftype', {buf = args.buf}) ~= '' then return end
+
+			local filename = vim.fn.fnamemodify(args.file, ":t")
+
+			-- If it is commit message
+			if filename == "COMMIT_EDITMSG" or filename == "MERGE_MSG" then
+				vim.api.nvim_set_option_value('filetype', 'gitcommit', {buf = args.buf})
+				vim.api.nvim_set_current_tabpage(gitui.tabnr)
+				vim.api.nvim_set_current_buf(gitui.bufnr) -- restore focus to gitui terminal to show with split view together
+				vim.cmd("split")
+				vim.api.nvim_set_current_buf(args.buf) -- open target buffer
+
+				-- if commit message writing is completed and close, go to focus
+				vim.api.nvim_create_autocmd("BufDelete", {
+					buffer = args.buf,
+					once = true,
+					callback = function()
+						vim.schedule(function()
+							focus_buffer(gitui.tabnr, gitui.bufnr)
+						end)
+					end,
+				})
+			-- If it is normal file opening
+			else
+				-- -- set args.buf's location to previous tab page
+				if prevbuf.tabnr and vim.api.nvim_tabpage_is_valid(prevbuf.tabnr) then
+					vim.api.nvim_set_current_tabpage(prevbuf.tabnr)
+					if prevbuf.winnr and vim.api.nvim_win_is_valid(prevbuf.winnr) then
+						vim.api.nvim_set_current_win(prevbuf.winnr)
+					end
+				end
+				vim.api.nvim_set_current_buf(args.buf)
+
+				-- terminate gitui
+				terminate_term()
+			end
+		end,
+	})
+end
+
+
 --- open gitui
 ---@param opts gitui.config
 function M.open(opts)
@@ -115,6 +174,10 @@ function M.open(opts)
 		vim.notify('[gitui.nvim] current directory is not .git repository', vim.log.levels.ERROR)
 		return
 	end
+
+	-- save current buffer state for editor
+	prevbuf.tabnr = vim.api.nvim_get_current_tabpage()
+	prevbuf.winnr = vim.api.nvim_get_current_win()
 
 	-- open new tab
 	vim.cmd("tabnew")
@@ -153,6 +216,10 @@ function M.open(opts)
 			end)
 		end
 	})
+
+	-- autocmd to deal editor request from gitui
+	attach_editor_handle()
+
 end
 
 
