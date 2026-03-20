@@ -36,31 +36,27 @@ end
 
 ---@param bufnr integer buffer number
 local function set_terminal_options(bufnr)
-	vim.api.nvim_set_option_value('buflisted', false, {buf = bufnr}) -- remove at :ls
-	vim.api.nvim_set_option_value('bufhidden', 'hide', {buf = bufnr}) -- wipe from memory when closed
-	vim.api.nvim_set_option_value('swapfile', false, {buf = bufnr}) -- don't make swap file
+	-- 'bufhidden' of terminal buffer is ignored. it operates 'wipe' only
+	-- 'swapfile' of terminal buffer is false as default
+	vim.api.nvim_set_option_value('buflisted', false, {buf = bufnr}) -- don't show in :ls
 end
 
 --- terminal gitui terminal
 local function terminate_term()
-	-- remove tab
-	if gitui.tabnr and vim.api.nvim_tabpage_is_valid(gitui.tabnr) then
-		local ok = pcall(function () vim.cmd('tabclose ' .. vim.api.nvim_tabpage_get_number(gitui.tabnr)) end)
-		if not ok then
-			vim.notify('Tab ' .. gitui.tabnr .. ' cannot be closed', vim.log.levels.WARN)
-		end
-	end
+	-- INFO: When process is quit, [process exit] message is remained at the terminal buffer
+	-- INFO: User put any key, then close the terminal buffer and it is wiped out from buflist as default.
+	-- INFO: You can remove the [process exit] message immediately by :tabclose or :bwipeout.
+	-- INFO: Using :tabclose remains buffer and close window only. So terminal buffer is listed in buflist again.
+	-- INFO: Using :bwipeout remove terminal buffer immediately and wipe it form buflist
+	-- INFO: So it needs to use :bwipeout only to close terminal
+
 	-- remove buffer
 	if gitui.bufnr and vim.api.nvim_buf_is_valid(gitui.bufnr) then
 		-- wipe out gitui terminal buffer form buffer list (nvim_buf_delete() cannot wipe out)
-		local ok pcall(function () vim.cmd('silent! bwipeout! ' .. gitui.bufnr) end)
+		-- bwipeout invokes BufEnter. I have no idea why his appends
+		local ok = pcall(function () vim.cmd('silent! bwipeout! ' .. gitui.bufnr) end)
 		if not ok then
 			vim.notify('Gitui terminal ' .. gitui.bufnr .. ' cannot be removed', vim.log.levels.WARN)
-		end
-		-- disable autocmd for editor opener
-		ok = pcall(vim.api.nvim_del_augroup_by_name, 'GitUI')
-		if not ok then
-			vim.notify('GitUI autocmd cannot be removed', vim.log.levels.WARN)
 		end
 	end
 	-- reset state
