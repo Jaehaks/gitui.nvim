@@ -24,6 +24,7 @@ local prevbuf = {
 
 local plugin_root = vim.fs.root(debug.getinfo(1, "S").source:sub(2), {'.git'}) or ""
 local wait_process = plugin_root .. '/lua/gitui/wait/remote_nvim.lua'
+local wait_file = vim.fs.normalize(vim.fn.stdpath('data') .. "/gitui/wait")
 
 --- get .git repo root
 ---@param bufnr integer buffer number
@@ -52,6 +53,11 @@ local function terminate_term()
 
 	-- remove buffer
 	if gitui.bufnr and vim.api.nvim_buf_is_valid(gitui.bufnr) then
+		-- disable autocmd for editor opener
+		local ok2 = pcall(vim.api.nvim_del_augroup_by_name, 'GitUI_OpenEditor')
+		if not ok2 then
+			vim.notify('GitUI_OpenEditor autocmd cannot be removed', vim.log.levels.WARN)
+		end
 		-- wipe out gitui terminal buffer form buffer list (nvim_buf_delete() cannot wipe out)
 		-- bwipeout invokes BufEnter. I have no idea why his appends
 		local ok = pcall(function () vim.cmd('silent! bwipeout! ' .. gitui.bufnr) end)
@@ -106,41 +112,51 @@ local function focus_buffer(tabnr, bufnr)
 end
 
 local function attach_editor_handle()
+	local commit_running = false
+
 	-- when file is attached to open from gitui
-	local augroup = vim.api.nvim_create_augroup("GitUI", { clear = true })
+	local augroup = vim.api.nvim_create_augroup("GitUI_OpenEditor", { clear = true })
 	vim.api.nvim_create_autocmd("BufEnter", { -- after completing buffer transition
 		group = augroup,
 		callback = function(args)
 			if not gitui.bufnr or not vim.api.nvim_buf_is_valid(gitui.bufnr) then return end
-			-- called nvim from gitui must be opened in gitui.tabnr
-			if vim.api.nvim_get_current_tabpage() ~= gitui.tabnr then return end
 			-- ignore If the buffer is not editable (picker, others)
 			if vim.api.nvim_get_option_value('buftype', {buf = args.buf}) ~= '' then return end
+			-- When writing a commit message, prevent it from falling into the else case.
+			if commit_running then return end
 
 			local filename = vim.fn.fnamemodify(args.file, ":t")
 
 			-- If it is commit message
 			if filename == "COMMIT_EDITMSG" or filename == "MERGE_MSG" then
+				commit_running = true
+				-- commit msg will be opened in new tab from remote_nvim.lua
+				local commit_tabnr = vim.api.nvim_get_current_tabpage()
+
 				vim.api.nvim_set_option_value('filetype', 'gitcommit', {buf = args.buf})
 				vim.api.nvim_set_option_value('bufhidden', 'wipe', {buf = args.buf}) -- invoke BufDelete event when :wq
 
-				vim.api.nvim_set_current_tabpage(gitui.tabnr)
-				-- vim.api.nvim_set_current_buf(gitui.bufnr) -- restore focus to gitui terminal to show with split view together
-				-- vim.cmd("split")
-				vim.api.nvim_set_current_buf(args.buf) -- open target buffer
-
 				-- if commit message writing is completed and close, go to focus
-				vim.api.nvim_create_autocmd("BufDelete", {
+				vim.api.nvim_create_autocmd('BufUnload', {
 					buffer = args.buf,
 					once = true,
 					callback = function()
+
 						-- if editing commit msg is completed, remove wait_process file and make the wait process terminate
-						if vim.fn.filereadable(wait_process) == 1 then
-							vim.fn.delete(wait_process)
+						if vim.fn.filereadable(wait_file) == 1 then
+							vim.fn.delete(wait_file)
 						end
 
 						vim.schedule(function()
 							focus_buffer(gitui.tabnr, gitui.bufnr)
+
+							-- close tab which was created by commit message
+							if vim.api.nvim_tabpage_is_valid(commit_tabnr) then
+								local tabpos = vim.api.nvim_tabpage_get_number(commit_tabnr)
+								pcall(function () vim.cmd('tabclose ' .. tabpos) end)
+							end
+
+							commit_running = false
 						end)
 					end,
 				})
@@ -204,7 +220,7 @@ function M.open(opts)
 	-- --remote-wait : not implemented yet.
 	local server = vim.v.servername
 	-- local editor_cmd = string.format("nvim --server %s --remote", server)
-	local editor_cmd = string.format('nvim -l %s %s', wait_process, server)
+	local editor_cmd = string.format('nvim -l %s %s %s', wait_process, server, wait_file)
 
 	-- open gitui terminal
 	local cmd = {'gitui', '-t', opts.theme_path or plugin_root .. '/data/theme.ron'}
