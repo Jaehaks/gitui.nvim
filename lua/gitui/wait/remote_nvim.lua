@@ -31,7 +31,7 @@ else
 end
 escaped_open_file = vim.fn.fnameescape(escaped_open_file) -- treat special characters as literal
 local ch = vim.fn.sockconnect('pipe', servername, {rpc = true})
-local opener = is_commit and 'tabedit ' or 'edit '
+local opener = 'edit '
 vim.rpcrequest(ch, 'nvim_command', opener .. escaped_open_file)
 
 -- if the file is commit message, wait this process until dummy file exists

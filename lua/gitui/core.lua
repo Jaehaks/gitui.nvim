@@ -130,8 +130,16 @@ local function attach_editor_handle()
 			-- If it is commit message
 			if filename == "COMMIT_EDITMSG" or filename == "MERGE_MSG" then
 				commit_running = true
-				-- commit msg will be opened in new tab from remote_nvim.lua
+
+				-- commit msg will be opened in current tab(gitui) from remote_nvim.lua
+				-- so change the focus to gitui buffer to tab page again
+				vim.api.nvim_set_current_tabpage(gitui.tabnr)
+				vim.api.nvim_set_current_buf(gitui.bufnr)
+
+				-- open commit message in new tab
+				vim.cmd('tabnew')
 				local commit_tabnr = vim.api.nvim_get_current_tabpage()
+				vim.api.nvim_set_current_buf(args.buf)
 
 				vim.api.nvim_set_option_value('filetype', 'gitcommit', {buf = args.buf})
 				vim.api.nvim_set_option_value('bufhidden', 'wipe', {buf = args.buf}) -- invoke BufDelete event when :wq
