@@ -1,15 +1,17 @@
 local M = {}
 
 ---@class gitui_state
----@field bufnr integer? buffer number of gitui terminal
----@field tabnr integer? tab id where gitui is opened
----@field jobnr integer? job id for gitui process
+---@field bufnr integer? Buffer number of gitui terminal
+---@field tabnr integer? Tab id where gitui is opened
+---@field jobnr integer? Job id for gitui process
+---@field root string? Absolute path of git root directory
 
 ---@type gitui_state
 local gitui = {
 	bufnr = nil,
 	tabnr = nil,
 	jobnr = nil,
+	root = nil,
 }
 
 ---@class prevbuf_state previous buffer state to open editor from gitui
@@ -111,7 +113,8 @@ local function focus_buffer(tabnr, bufnr)
 	return false
 end
 
-local function attach_editor_handle()
+---@param opts gitui.config
+local function attach_editor_handle(opts)
 	local commit_running = false
 
 	-- when file is attached to open from gitui
@@ -202,6 +205,7 @@ function M.open(opts)
 		vim.notify('[gitui.nvim] current directory is not .git repository', vim.log.levels.ERROR)
 		return
 	end
+	gitui.root = root
 
 	-- save current buffer state for editor
 	prevbuf.tabnr = vim.api.nvim_get_current_tabpage()
@@ -238,7 +242,7 @@ function M.open(opts)
 			GIT_EDITOR = editor_cmd,
 			EDITOR = editor_cmd,
 		},
-		cwd = root,
+		cwd = gitui.root,
 		on_exit = function ()
 			vim.schedule(function ()
 				terminate_term()
@@ -247,8 +251,7 @@ function M.open(opts)
 	})
 
 	-- autocmd to deal editor request from gitui
-	attach_editor_handle()
-
+	attach_editor_handle(opts)
 end
 
 
