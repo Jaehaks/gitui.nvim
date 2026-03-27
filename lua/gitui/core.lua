@@ -113,6 +113,89 @@ local function focus_buffer(tabnr, bufnr)
 	return false
 end
 
+
+--- show git diff result to current tab
+local function show_diff()
+	local diff = require('gitui.diff')
+
+	-- create empty buffer to show git diff
+    local diff_bufnr = diff.create_diff()
+
+	--- update diff buffer contents
+	local function update_diff()
+		---@class gitui.diffresults git diff results table
+		---@field staged string
+		---@field unstaged string
+		---@field untracked string
+		local results = {
+			staged = "",
+			unstaged = "",
+			untracked = "",
+		}
+
+		--- write results to diff buffer after all `git diff` executions are done
+		local done = 0
+		local function on_git_done()
+			done = done + 1
+			if done < 3 then return end
+			diff.load_diff(diff_bufnr, results)
+		end
+
+		--- on_exit callback for vim.system
+		---@param key string
+		local function on_exit(key)
+			---@param out vim.SystemCompleted
+			return function (out)
+				results[key] = out.stdout
+				on_git_done()
+			end
+		end
+
+		-- get diff results asynchronously
+		vim.system({ 'git', 'diff', '--cached', '--ignore-cr-at-eol' }, { cwd = gitui.root, text = true }, on_exit('staged'))
+		vim.system({ 'git', 'diff', '--ignore-cr-at-eol' }, { cwd = gitui.root, text = true }, on_exit('unstaged'))
+		vim.system({ 'git', 'ls-files', '--others', '--exclude-standard', '--ignore-cr-at-eol' }, { cwd = gitui.root, text = true }, function (out)
+			local raw = vim.trim(out.stdout)
+			-- If not exists, return
+			if raw == "" then
+				results.untracked = ""
+				on_git_done()
+				return
+			end
+
+			-- make untracked file list using table
+			local files = {}
+			for line in raw:gmatch('[^\r\n]+') do
+				table.insert(files, line)
+			end
+
+			-- get diff contents of untracked files
+			local untracked_results = {}
+			local remaining = #files
+			local null_dev = vim.fn.has('win32') == 1 and 'NUL' or '/dev/null'
+			for i, file in ipairs(files) do
+				vim.system({ 'git', 'diff', '--no-index', null_dev, file }, { cwd = gitui.root, text = true },
+				function(out2)
+					untracked_results[i] = out2.stdout
+					remaining = remaining - 1
+					if remaining == 0 then
+						results.untracked = table.concat(untracked_results, "")
+						on_git_done()
+					end
+				end)
+			end
+		end)
+	end
+	update_diff()
+
+	-- vim.api.nvim_create_autocmd("BufEnter", {
+	-- 	buffer = diff_bufnr,
+	-- 	callback = function()
+	-- 		update_diff()
+	-- 	end,
+	-- })
+end
+
 ---@param opts gitui.config
 local function attach_editor_handle(opts)
 	local commit_running = false
@@ -141,11 +224,13 @@ local function attach_editor_handle(opts)
 
 				-- open commit message in new tab
 				vim.cmd('tabnew')
-				local commit_tabnr = vim.api.nvim_get_current_tabpage()
 				vim.api.nvim_set_current_buf(args.buf)
-
 				vim.api.nvim_set_option_value('filetype', 'gitcommit', {buf = args.buf})
 				vim.api.nvim_set_option_value('bufhidden', 'wipe', {buf = args.buf}) -- invoke BufDelete event when :wq
+				local commit_tabnr = vim.api.nvim_get_current_tabpage()
+
+				-- show diff view
+				show_diff()
 
 				-- if commit message writing is completed and close, go to focus
 				vim.api.nvim_create_autocmd('BufUnload', {
