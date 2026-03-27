@@ -91,6 +91,39 @@ local function parse_diff(raw, label)
 	return lines
 end
 
+local fold_level_1 = { Staged = true, Unstaged = true, Untracked = true, }
+local fold_level_2 = { modified = true, added = true, delete = true, renamed = true }
+--- expr function to folding, It must be global function
+---@param lnum integer line number
+_G._gitui_foldexpr = function(lnum)
+	local line = vim.fn.getline(lnum)
+	local first_word = line:match('^[^%a]*(%a+)')
+	if first_word then
+		if fold_level_1[first_word] then return ">1" end -- group fold
+		if fold_level_2[first_word] then return ">2" end -- file fold
+	end
+
+	if line:match("^%s*@@") then return ">3" end -- hunk fold
+	if line == "" then return "0" end
+	return "3"
+end
+
+local function toggle_fold()
+	local lnum = vim.fn.line('.')
+	local fold_level = vim.fn.foldlevel(lnum)
+	local fold_closed = vim.fn.foldclosed(lnum)
+
+	if fold_closed ~= -1 then
+		if fold_level == 2 then
+			vim.cmd("normal! zO") -- expand all under level 2
+		else
+			vim.cmd("normal! zo") -- If level 1 or 3, expand only 1 level
+		end
+	else
+		vim.cmd("normal! zc") -- If fold is opened, close the specific fold level
+	end
+end
+
 --- create buffer showing git diff
 ---@return integer buffer id of diff view
 M.create_diff = function ()
@@ -104,12 +137,12 @@ M.create_diff = function ()
 	vim.api.nvim_set_current_buf(bufnr) -- show empty buffer in split view
 
 	-- set fold properties
-	-- vim.wo.foldmethod = 'expr'
-	-- vim.wo.foldexpr = 'v:lua._gitui_foldexpr(v:lnum)'
-	-- vim.wo.foldtext = 'getline(v:foldstart)'
+	vim.wo.foldmethod = 'expr'
+	vim.wo.foldexpr = 'v:lua._gitui_foldexpr(v:lnum)'
+	vim.wo.foldtext = 'getline(v:foldstart)'
 
 	-- set keymaps for diff view
-	vim.keymap.set('n', '<Tab>', 'za', { buffer = bufnr, silent = true, desc = '[gitui.nvim] Toggle Fold' })
+	vim.keymap.set('n', '<Tab>', toggle_fold, { buffer = bufnr, silent = true, desc = '[gitui.nvim] Toggle Fold' })
 	vim.keymap.set('n', '<CR>', function()
 		-- local fname, file_line = parser.resolve_diff_target(bufnr)
 		-- if fname then
@@ -151,7 +184,10 @@ M.load_diff = function (diff_bufnr, diff_result)
 		vim.api.nvim_set_option_value('modifiable', true, { buf = diff_bufnr }) -- unlocked
 
 		vim.api.nvim_buf_set_lines(diff_bufnr, 0, -1, false, contents) -- set contents
-		-- vim.api.nvim_buf_call(diff_bufnr, function() vim.cmd("normal! zM") end) -- close all fold in diff_bufnr
+		vim.api.nvim_buf_call(diff_bufnr, function()
+			vim.cmd("normal! zx") -- update fold by foldexpr
+			vim.wo.foldlevel = 1 -- default foldlevel
+		end) -- set default fold level
 
 		vim.api.nvim_set_option_value('modifiable', false, { buf = diff_bufnr }) -- locked
 	end)
