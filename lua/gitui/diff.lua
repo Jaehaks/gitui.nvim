@@ -1,31 +1,93 @@
 local M = {}
 
+---@class gitui.hunk_info
+---@field filepath string
+---@field group string staged / unstaged / untracked group
+---@field kind string modified / added / deleted / renamed
+
+--- get kind information from git diff header
+---@param header string[] header string from git diff
+---@param filepath string target file path
+---@return string kind, string title
+local function get_kind(header, filepath)
+	local from = nil
+	local to = nil
+	for _, line in ipairs(header) do
+		if line:match("^index") then
+			return "modified", "modified " .. filepath
+		elseif line:match("^new file") then
+			return "added", "added " .. filepath
+		elseif line:match("^deleted file") then
+			return "deleted", "deleted " .. filepath
+		elseif line:match("^rename from") then
+			from = line:match("^rename from (.+)")
+		elseif line:match("^rename to") then
+			to = line:match("^rename to (.+)")
+			return "renamed", "renamed " .. from .. '  ' .. to
+		end
+	end
+	return "modified", "modified " .. filepath -- default pattern
+end
+
 --- transform raw string result of git diff to string[]
 local function parse_diff(raw, label)
 	if not raw or raw == "" then return {} end
 
 
-	local lines = {}
+	local lines = {} -- final string[] to show in diff view
+	---@type gitui.hunk_info[]
+	local hunk_infos = {} -- info list of hunks
+	---@type gitui.hunk_info
+	local cur_info = nil -- info of current hunks
+	local hunk_header = {}
 	local hunk_start = false
+
+	local function add_title()
+		local kind, title = get_kind(hunk_header, cur_info.filepath)
+		cur_info.kind = kind -- update kind
+		table.insert(lines, title)
+	end
+
 	for line in raw:gmatch('[^\r\n]+') do
 		local fc = line:byte(1) -- get first character ascii code
 
-		-- 1) put hunks if it is started with ' '(32), '+'(43), '-'(45)
-		if hunk_start and (fc == 32 or fc == 43 or fc == 45) then
+		-- 1) put hunks if it is started with ' '(32), '+'(43), '-'(45) '\'(92)
+		if hunk_start and (fc == 32 or fc == 43 or fc == 45 or fc == 92) then
 			table.insert(lines, line)
 
 		-- 2) put header which has filename, it will be title of folding
 		elseif line:sub(1,4) == 'diff' then
-			local filepath = line:match('^diff %-%-git a/.- b/(.+)$')
-			table.insert(lines, ' [' .. label .. ']' .. filepath)
-			hunk_start = false
+			-- insert filepath to diffview if there is no @@ pattern such as rename
+			-- add cur_info to avoid adding title at first call
+			if cur_info and not hunk_start then add_title() end
 
-		-- 3) check start hunk
+			-- add hunk information
+			local filepath = line:match('^diff %-%-git a/.- b/(.+)$')
+			hunk_start = false -- end inserting diff contents
+			hunk_header = {} -- initialize header
+			cur_info = {
+				filepath = filepath,
+				group = label, -- staged / unstaged / untracked
+				kind = nil, -- modified / added
+			}
+			table.insert(hunk_infos, cur_info)
+
+		-- 3) check start hunk. Getting header is finished
 		elseif line:sub(1,2) == '@@' then
+			if not hunk_start then
+				add_title()
+			hunk_start = true -- start inserting diff contents
+			end
 			table.insert(lines, line)
-			hunk_start = true
+
+		-- 4) get header info
+		else
+			table.insert(hunk_header, line)
 		end
 	end
+
+	-- If last file doesn't have any hunk such as renamed file, add filepath title
+	if not hunk_start then add_title() end
 	return lines
 end
 
@@ -73,8 +135,11 @@ M.load_diff = function (diff_bufnr, diff_result)
 	local contents = {}
 	local function add_contents(str, label)
 		local parsed = parse_diff(str, label)
-		if #parsed>0 then table.insert(parsed, "") end -- add empty line
+		if #parsed>0 then
+			vim.list_extend(contents, { label .. ' files' }) -- add group title
+			table.insert(parsed, "") 						 -- add new line between groups
 		vim.list_extend(contents, parsed)
+	end
 	end
 	add_contents(untracked, 'Untracked')
 	add_contents(unstaged, 'Unstaged')
