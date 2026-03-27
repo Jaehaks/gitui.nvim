@@ -76,7 +76,7 @@ local function parse_diff(raw, label)
 		elseif line:sub(1,2) == '@@' then
 			if not hunk_start then
 				add_title()
-			hunk_start = true -- start inserting diff contents
+				hunk_start = true -- start inserting diff contents
 			end
 			table.insert(lines, line)
 
@@ -172,8 +172,8 @@ M.load_diff = function (diff_bufnr, diff_result)
 		if #parsed>0 then
 			vim.list_extend(contents, { label .. ' files' }) -- add group title
 			table.insert(parsed, "") 						 -- add new line between groups
-		vim.list_extend(contents, parsed)
-	end
+			vim.list_extend(contents, parsed)
+		end
 	end
 	add_contents(untracked, 'Untracked')
 	add_contents(unstaged, 'Unstaged')
