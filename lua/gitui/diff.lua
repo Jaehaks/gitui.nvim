@@ -137,10 +137,23 @@ M.create_diff = function ()
 	vim.cmd("topleft split")
 	vim.api.nvim_set_current_buf(bufnr) -- show empty buffer in split view
 
+	-- default properties
+	vim.wo.number = true
+	vim.wo.relativenumber = true
+	vim.wo.signcolumn = 'yes'
+	vim.wo.foldcolumn = '0'
+	vim.wo.statuscolumn = ''
+
 	-- set fold properties
 	vim.wo.foldmethod = 'expr'
 	vim.wo.foldexpr = 'v:lua._gitui_foldexpr(v:lnum)'
 	vim.wo.foldtext = 'getline(v:foldstart)'
+	vim.opt_local.fillchars:append({
+		fold = ' ',      -- 접힌 줄 빈공간 처리
+		foldopen = 'v',  -- 열렸을 때 아이콘 (statuscolumn의 %C 자리에 들어감)
+		foldclose = '>', -- 닫혔을 때 아이콘 (statuscolumn의 %C 자리에 들어감)
+		foldsep = ' ',   -- 폴딩 내부의 세로줄(|)을 빈 공간으로 깔끔하게 처리
+	})
 
 	-- set keymaps for diff view
 	vim.keymap.set('n', '<Tab>', toggle_fold, { buffer = bufnr, silent = true, desc = '[gitui.nvim] Toggle Fold' })
@@ -186,8 +199,8 @@ M.load_diff = function (diff_bufnr, diff_result)
 
 		vim.api.nvim_buf_set_lines(diff_bufnr, 0, -1, false, contents) -- set contents
 		vim.api.nvim_buf_call(diff_bufnr, function()
-			vim.cmd("normal! zx") -- update fold by foldexpr
-			vim.wo.foldlevel = 1 -- default foldlevel
+			vim.cmd("normal! zx")           -- update fold by foldexpr
+			vim.wo.foldlevel = 1            -- default foldlevel
 		end) -- set default fold level
 
 		vim.api.nvim_set_option_value('modifiable', false, { buf = diff_bufnr }) -- locked
