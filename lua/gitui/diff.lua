@@ -108,6 +108,7 @@ _G._gitui_foldexpr = function(lnum)
 	return "3"
 end
 
+--- [keymap] toggle fold
 local function toggle_fold()
 	local lnum = vim.fn.line('.')
 	local fold_level = vim.fn.foldlevel(lnum)
