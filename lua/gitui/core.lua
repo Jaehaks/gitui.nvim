@@ -152,9 +152,9 @@ local function show_diff()
 		end
 
 		-- get diff results asynchronously
-		vim.system({ 'git', 'diff', '--cached' }, { cwd = gitui.root, text = true }, on_exit('staged'))
-		vim.system({ 'git', 'diff' }, { cwd = gitui.root, text = true }, on_exit('unstaged'))
-		vim.system({ 'git', 'ls-files', '--others', '--exclude-standard' }, { cwd = gitui.root, text = true }, function (out)
+		vim.system({ 'git', 'diff', '--cached', '--ignore-cr-at-eol' }, { cwd = gitui.root, text = true }, on_exit('staged'))
+		vim.system({ 'git', 'diff', '--ignore-cr-at-eol' }, { cwd = gitui.root, text = true }, on_exit('unstaged'))
+		vim.system({ 'git', 'ls-files', '--others', '--exclude-standard', '--ignore-cr-at-eol' }, { cwd = gitui.root, text = true }, function (out)
 			local raw = vim.trim(out.stdout)
 			-- If not exists, return
 			if raw == "" then
