@@ -113,6 +113,56 @@ local function focus_buffer(tabnr, bufnr)
 	return false
 end
 
+
+--- show git diff result to current tab
+local function show_diff()
+	local diff = require('gitui.diff')
+
+	-- create empty buffer to show git diff
+    local diff_bufnr = diff.create_diff()
+
+	--- update diff buffer contents
+	local function update_diff()
+		---@class gitui.diffresults git diff results table
+		---@field staged string
+		---@field unstaged string
+		local results = {
+			staged = "",
+			unstaged = "",
+		}
+
+		--- write results to diff buffer after all `git diff` executions are done
+		local done = 0
+		local function on_git_done()
+			done = done + 1
+			if done < 2 then return end
+			diff.load_diff(diff_bufnr, results)
+		end
+
+		--- on_exit callback for vim.system
+		---@param key string
+		local function on_exit(key)
+			---@param out vim.SystemCompleted
+			return function (out)
+				results[key] = out.stdout
+				on_git_done()
+			end
+		end
+
+		-- get staged / unstaged diff results asynchronously
+		vim.system({ 'git', 'diff', '--cached' }, { cwd = gitui.root, text = true }, on_exit('staged'))
+		vim.system({ 'git', 'diff' }, { cwd = gitui.root, text = true }, on_exit('unstaged'))
+	end
+	update_diff()
+
+	-- vim.api.nvim_create_autocmd("BufEnter", {
+	-- 	buffer = diff_bufnr,
+	-- 	callback = function()
+	-- 		update_diff()
+	-- 	end,
+	-- })
+end
+
 ---@param opts gitui.config
 local function attach_editor_handle(opts)
 	local commit_running = false
@@ -141,11 +191,13 @@ local function attach_editor_handle(opts)
 
 				-- open commit message in new tab
 				vim.cmd('tabnew')
-				local commit_tabnr = vim.api.nvim_get_current_tabpage()
 				vim.api.nvim_set_current_buf(args.buf)
-
 				vim.api.nvim_set_option_value('filetype', 'gitcommit', {buf = args.buf})
 				vim.api.nvim_set_option_value('bufhidden', 'wipe', {buf = args.buf}) -- invoke BufDelete event when :wq
+				local commit_tabnr = vim.api.nvim_get_current_tabpage()
+
+				-- show diff view
+				show_diff()
 
 				-- if commit message writing is completed and close, go to focus
 				vim.api.nvim_create_autocmd('BufUnload', {
