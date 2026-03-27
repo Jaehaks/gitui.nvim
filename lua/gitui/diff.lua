@@ -65,19 +65,22 @@ end
 M.load_diff = function (diff_bufnr, diff_result)
 
 	-- string with \n
-	local staged = diff_result.staged
+	local untracked = diff_result.untracked
 	local unstaged = diff_result.unstaged
+	local staged = diff_result.staged
 
+	-- parse and modify git results to use in nvim_buf_set_lines() and fold
 	local contents = {}
-	-- staged
-	local parsed = parse_diff(unstaged, 'UNSTAGED')
-	if #parsed>0 then table.insert(parsed, "") end -- add empty line
-	vim.list_extend(contents, parsed)
-	-- unstaged
-	parsed = parse_diff(staged, 'STAGED')
-	if #parsed>0 then table.insert(parsed, "") end -- add empty line
-	vim.list_extend(contents, parsed)
+	local function add_contents(str, label)
+		local parsed = parse_diff(str, label)
+		if #parsed>0 then table.insert(parsed, "") end -- add empty line
+		vim.list_extend(contents, parsed)
+	end
+	add_contents(untracked, 'Untracked')
+	add_contents(unstaged, 'Unstaged')
+	add_contents(staged, 'Staged')
 
+	-- write diff contents to buffer
 	vim.schedule(function()
 		if not vim.api.nvim_buf_is_valid(diff_bufnr) then return end
 		vim.api.nvim_set_option_value('modifiable', true, { buf = diff_bufnr }) -- unlocked

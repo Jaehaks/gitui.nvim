@@ -126,16 +126,18 @@ local function show_diff()
 		---@class gitui.diffresults git diff results table
 		---@field staged string
 		---@field unstaged string
+		---@field untracked string
 		local results = {
 			staged = "",
 			unstaged = "",
+			untracked = "",
 		}
 
 		--- write results to diff buffer after all `git diff` executions are done
 		local done = 0
 		local function on_git_done()
 			done = done + 1
-			if done < 2 then return end
+			if done < 3 then return end
 			diff.load_diff(diff_bufnr, results)
 		end
 
@@ -149,9 +151,40 @@ local function show_diff()
 			end
 		end
 
-		-- get staged / unstaged diff results asynchronously
+		-- get diff results asynchronously
 		vim.system({ 'git', 'diff', '--cached' }, { cwd = gitui.root, text = true }, on_exit('staged'))
 		vim.system({ 'git', 'diff' }, { cwd = gitui.root, text = true }, on_exit('unstaged'))
+		vim.system({ 'git', 'ls-files', '--others', '--exclude-standard' }, { cwd = gitui.root, text = true }, function (out)
+			local raw = vim.trim(out.stdout)
+			-- If not exists, return
+			if raw == "" then
+				results.untracked = ""
+				on_git_done()
+				return
+			end
+
+			-- make untracked file list using table
+			local files = {}
+			for line in raw:gmatch('[^\r\n]+') do
+				table.insert(files, line)
+			end
+
+			-- get diff contents of untracked files
+			local untracked_results = {}
+			local remaining = #files
+			local null_dev = vim.fn.has('win32') == 1 and 'NUL' or '/dev/null'
+			for i, file in ipairs(files) do
+				vim.system({ 'git', 'diff', '--no-index', null_dev, file }, { cwd = gitui.root, text = true },
+				function(out2)
+					untracked_results[i] = out2.stdout
+					remaining = remaining - 1
+					if remaining == 0 then
+						results.untracked = table.concat(untracked_results, "")
+						on_git_done()
+					end
+				end)
+			end
+		end)
 	end
 	update_diff()
 
