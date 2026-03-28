@@ -197,6 +197,7 @@ local function open_hunk()
 		end
 		vim.cmd('edit ' .. open_info.filepath)
 		vim.api.nvim_win_set_cursor(0, {open_info.row, 0})
+		vim.cmd('normal! zz')
 		diffview.winid_aux = vim.api.nvim_get_current_win()
 	end
 end
