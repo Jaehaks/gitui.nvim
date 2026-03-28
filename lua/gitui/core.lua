@@ -115,6 +115,7 @@ end
 
 
 --- show git diff result to current tab
+---@return integer buffer id of diff buffer
 local function show_diff()
 	local diff = require('gitui.diff')
 
@@ -194,6 +195,8 @@ local function show_diff()
 	-- 		update_diff()
 	-- 	end,
 	-- })
+
+	return diff_bufnr
 end
 
 ---@param opts gitui.config
@@ -230,32 +233,37 @@ local function attach_editor_handle(opts)
 				local commit_tabnr = vim.api.nvim_get_current_tabpage()
 
 				-- show diff view
-				show_diff()
+				local diff_bufnr = show_diff()
 
-				-- if commit message writing is completed and close, go to focus
-				vim.api.nvim_create_autocmd('BufUnload', {
-					buffer = args.buf,
-					once = true,
-					callback = function()
+				--- close commit tab and return to gitui
+				local function close_commit_tab()
+					-- if editing commit msg is completed, remove wait_process file and make the wait process terminate
+					if vim.fn.filereadable(wait_file) == 1 then
+						vim.fn.delete(wait_file)
+					end
 
-						-- if editing commit msg is completed, remove wait_process file and make the wait process terminate
-						if vim.fn.filereadable(wait_file) == 1 then
-							vim.fn.delete(wait_file)
+					vim.schedule(function()
+						focus_buffer(gitui.tabnr, gitui.bufnr)
+
+						-- close tab which was created by commit message
+						if vim.api.nvim_tabpage_is_valid(commit_tabnr) then
+							local tabpos = vim.api.nvim_tabpage_get_number(commit_tabnr)
+							pcall(function () vim.cmd('tabclose ' .. tabpos) end)
 						end
 
-						vim.schedule(function()
-							focus_buffer(gitui.tabnr, gitui.bufnr)
+						commit_running = false
+					end)
+				end
 
-							-- close tab which was created by commit message
-							if vim.api.nvim_tabpage_is_valid(commit_tabnr) then
-								local tabpos = vim.api.nvim_tabpage_get_number(commit_tabnr)
-								pcall(function () vim.cmd('tabclose ' .. tabpos) end)
-							end
+				-- if commit message/diff view writing is completed and close, go to focus
+				for _, buf in ipairs({args.buf, diff_bufnr}) do
+					vim.api.nvim_create_autocmd('BufUnload', {
+						buffer = buf,
+						once = true,
+						callback = close_commit_tab
+					})
+				end
 
-							commit_running = false
-						end)
-					end,
-				})
 			-- If it is normal file opening
 			else
 				-- -- set args.buf's location to previous tab page

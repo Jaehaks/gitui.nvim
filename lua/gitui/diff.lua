@@ -1,9 +1,18 @@
 local M = {}
 
+---@class gitui.diffview
+---@field winid_commit integer? commit message window id
+---@field winid_diff integer? diffview buffer window id
+---@field winid_aux integer? opened buffer in diffview window id
+local diffview = {
+	winid_commit = nil,
+	winid_diff = nil,
+	winid_aux = nil,
+}
+
 ---@class gitui.hunk_info
 ---@field filepath string
 ---@field group string staged / unstaged / untracked group
----@field kind string modified / added / deleted / renamed
 
 --- get kind information from git diff header
 ---@param header string[] header string from git diff
@@ -30,22 +39,26 @@ local function get_kind(header, filepath)
 end
 
 --- transform raw string result of git diff to string[]
+---@param raw string raw stdout of git diff
+---@param label string group label staged / unstaged / untracked
+---@return string[] sliced stdout data form to show in diff view
+---@return gitui.hunk_info[] matching information between line number in diff view and filepath without offset
 local function parse_diff(raw, label)
-	if not raw or raw == "" then return {} end
-
+	if not raw or raw == "" then return {}, {} end
 
 	local lines = {} -- final string[] to show in diff view
-	---@type gitui.hunk_info[]
-	local hunk_infos = {} -- info list of hunks
-	---@type gitui.hunk_info
-	local cur_info = nil -- info of current hunks
+	---@type gitui.hunk_info[] info list of each file by line
+	local file_infos = {}
+	---@type gitui.hunk_info info of current hunks
+	local cur_info = nil
 	local hunk_header = {}
 	local hunk_start = false
 
+	--- add title to fold by adding kind to filepath
 	local function add_title()
-		local kind, title = get_kind(hunk_header, cur_info.filepath)
-		cur_info.kind = kind -- update kind
+		local _, title = get_kind(hunk_header, cur_info.filepath)
 		table.insert(lines, title)
+		file_infos[#lines] = cur_info
 	end
 
 	for line in raw:gmatch('[^\r\n]+') do
@@ -67,10 +80,8 @@ local function parse_diff(raw, label)
 			hunk_header = {} -- initialize header
 			cur_info = {
 				filepath = filepath,
-				group = label, -- staged / unstaged / untracked
-				kind = nil, -- modified / added
+				group = label,
 			}
-			table.insert(hunk_infos, cur_info)
 
 		-- 3) check start hunk. Getting header is finished
 		elseif line:sub(1,2) == '@@' then
@@ -88,7 +99,7 @@ local function parse_diff(raw, label)
 
 	-- If last file doesn't have any hunk such as renamed file, add filepath title
 	if not hunk_start then add_title() end
-	return lines
+	return lines, file_infos
 end
 
 local fold_level_1 = { Staged = true, Unstaged = true, Untracked = true, }
@@ -97,7 +108,7 @@ local fold_level_2 = { modified = true, added = true, deleted = true, renamed = 
 ---@param lnum integer line number
 _G._gitui_foldexpr = function(lnum)
 	local line = vim.fn.getline(lnum)
-	local first_word = line:match('^[^%a]*(%a+)')
+	local first_word = line:match('^(%a+)')
 	if first_word then
 		if fold_level_1[first_word] then return ">1" end -- group fold
 		if fold_level_2[first_word] then return ">2" end -- file fold
@@ -125,10 +136,77 @@ local function toggle_fold()
 	end
 end
 
+--- open file and move to cursor where user <CR> in hunk from diff view buffer
+local function open_hunk()
+
+	-- get current line info
+	local lnum = vim.fn.line('.')
+	local line_str = vim.fn.getline(lnum)
+	local fw = line_str:match('^(%a+)')
+
+	-- ignore the line is empty or group title
+	if line_str == "" or (fw and fold_level_1[fw]) then return end
+
+	---@class open_info
+	---@field filepath string? absolute path of the file where cursor is on
+	---@field row integer line number to move cursor
+	local open_info = {
+		filepath = nil,
+		row = 1,
+	}
+	local file_lnum = 1
+
+	-- 1) get filepath which is most closed from current cursor line toward upwards
+	-- To get correct filepath which might have white spaces
+	local file_infos = vim.b.gitui_diff_file_infos or {}
+	for i = lnum, 1, -1 do
+		local key = tostring(i)
+		if file_infos[key] then
+			open_info.filepath = file_infos[key].filepath
+			file_lnum = i
+			break
+		end
+	end
+	if not open_info.filepath then return end
+
+	-- 2) Search upwards to find the nearest @@ (hunk header)
+	-- @@ -15,4 +15,6 @@  =>  -<oldfile start lnum><oldfile lines> +<new file start lnum><new file lines>
+	if lnum > file_lnum then
+		local hunk_lnum = vim.fn.search('^@@', 'bnW') -- it includes current line number
+		local hunk_header = vim.fn.getline(hunk_lnum)
+		local hunk_start_lnum = tonumber(hunk_header:match('%+(%d+)')) -- start line in target file
+		if hunk_start_lnum then
+			local offset = 0
+			for i = hunk_lnum+1, lnum - 1 do
+				local fc = vim.fn.getline(i):byte(1) -- get first char
+				if fc == 32 or fc == 43 then
+					offset = offset + 1
+				end
+			end
+			open_info.row = hunk_start_lnum + offset
+		end
+	end
+
+	-- 3) open the file and move to cursor
+	if open_info.filepath then
+		if diffview.winid_aux and vim.api.nvim_win_is_valid(diffview.winid_aux) then
+			vim.api.nvim_set_current_win(diffview.winid_aux)
+		else
+			vim.api.nvim_set_current_win(diffview.winid_commit)
+			vim.cmd('vsplit')
+		end
+		vim.cmd('edit ' .. open_info.filepath)
+		vim.api.nvim_win_set_cursor(0, {open_info.row, 0})
+		vim.cmd('normal! zz')
+		diffview.winid_aux = vim.api.nvim_get_current_win()
+	end
+end
+
 --- create buffer showing git diff
 ---@return integer buffer id of diff view
 M.create_diff = function ()
 
+	diffview.winid_commit = vim.api.nvim_get_current_win() -- set window id of commit message
 	local bufnr = vim.api.nvim_create_buf(false, true) -- make unlisted scratch buffer
 	vim.api.nvim_set_option_value('filetype', 'diff', { buf = bufnr })
 	vim.api.nvim_set_option_value('bufhidden', 'wipe', { buf = bufnr })
@@ -136,6 +214,7 @@ M.create_diff = function ()
 
 	vim.cmd("topleft split")
 	vim.api.nvim_set_current_buf(bufnr) -- show empty buffer in split view
+	diffview.winid_diff = vim.api.nvim_get_current_win()
 
 	-- default properties
 	vim.wo.number = true
@@ -157,14 +236,9 @@ M.create_diff = function ()
 
 	-- set keymaps for diff view
 	vim.keymap.set('n', '<Tab>', toggle_fold, { buffer = bufnr, silent = true, desc = '[gitui.nvim] Toggle Fold' })
-	vim.keymap.set('n', '<CR>', function()
-		-- local fname, file_line = parser.resolve_diff_target(bufnr)
-		-- if fname then
-		-- 	on_open(fname, file_line)
-		-- end
-	end, { buffer = bufnr, silent = true, desc = '[gitui.nvim] Go to the line of file' })
+	vim.keymap.set('n', '<CR>', open_hunk, { buffer = bufnr, silent = true, desc = '[gitui.nvim] Go to the line of file' })
 
-	vim.cmd("wincmd j") -- move focus
+	vim.api.nvim_set_current_win(diffview.winid_commit) -- restore focus to commit message
 	return bufnr
 end
 
@@ -180,12 +254,19 @@ M.load_diff = function (diff_bufnr, diff_result)
 
 	-- parse and modify git results to use in nvim_buf_set_lines() and fold
 	local contents = {}
+	---@type gitui.hunk_info[]
+	local gitui_diff_file_infos = {} -- combination with all group file_infos
 	local function add_contents(str, label)
-		local parsed = parse_diff(str, label)
+		local parsed, file_infos = parse_diff(str, label)
 		if #parsed>0 then
-			vim.list_extend(contents, { label .. ' files' }) -- add group title
-			table.insert(parsed, "") 						 -- add new line between groups
+			table.insert(contents, label .. ' files') -- add group title
+			local offset = #contents
 			vim.list_extend(contents, parsed)
+			table.insert(contents, '') -- add new line between groups
+
+			for local_lnum, cur_info in pairs(file_infos) do
+				gitui_diff_file_infos[tostring(local_lnum + offset)] = cur_info -- it must has string key to save to vim.b
+			end
 		end
 	end
 	add_contents(untracked, 'Untracked')
@@ -198,6 +279,7 @@ M.load_diff = function (diff_bufnr, diff_result)
 		vim.api.nvim_set_option_value('modifiable', true, { buf = diff_bufnr }) -- unlocked
 
 		vim.api.nvim_buf_set_lines(diff_bufnr, 0, -1, false, contents) -- set contents
+		vim.b[diff_bufnr].gitui_diff_file_infos = gitui_diff_file_infos -- save diff file infos to buffer
 		vim.api.nvim_buf_call(diff_bufnr, function()
 			vim.cmd("normal! zx")           -- update fold by foldexpr
 			vim.wo.foldlevel = 1            -- default foldlevel
