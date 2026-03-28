@@ -259,7 +259,7 @@ M.load_diff = function (diff_bufnr, diff_result)
 	local function add_contents(str, label)
 		local parsed, file_infos = parse_diff(str, label)
 		if #parsed>0 then
-			table.insert(contents, label .. ' files') -- add group title
+			table.insert(contents, label .. ' files ' .. '(' .. vim.tbl_count(file_infos) .. ')') -- add group title
 			local offset = #contents
 			vim.list_extend(contents, parsed)
 			table.insert(contents, '') -- add new line between groups
