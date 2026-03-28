@@ -92,7 +92,7 @@ local function parse_diff(raw, label)
 end
 
 local fold_level_1 = { Staged = true, Unstaged = true, Untracked = true, }
-local fold_level_2 = { modified = true, added = true, delete = true, renamed = true }
+local fold_level_2 = { modified = true, added = true, deleted = true, renamed = true }
 --- expr function to folding, It must be global function
 ---@param lnum integer line number
 _G._gitui_foldexpr = function(lnum)
