@@ -97,7 +97,7 @@ local fold_level_2 = { modified = true, added = true, deleted = true, renamed = 
 ---@param lnum integer line number
 _G._gitui_foldexpr = function(lnum)
 	local line = vim.fn.getline(lnum)
-	local first_word = line:match('^[^%a]*(%a+)')
+	local first_word = line:match('^(%a+)')
 	if first_word then
 		if fold_level_1[first_word] then return ">1" end -- group fold
 		if fold_level_2[first_word] then return ">2" end -- file fold
