@@ -191,14 +191,36 @@ local function show_diff()
 
 	-- register autocmd to auto update git diff contents every winenter
 	-- the target buffer must have name to use it. autocmd will be removed automatically after diff_bufnr is removed
-	vim.api.nvim_create_augroup('GitUI_DiffUpdate', {clear = true})
-	vim.api.nvim_create_autocmd("WinEnter", {
-		group = 'GitUI_DiffUpdate',
-		buffer = diff_bufnr,
+
+	-- 1) auto update diff view whenever buffer is changed
+	local augroup = vim.api.nvim_create_augroup('GitUI_DiffUpdate', { clear = true })
+	vim.api.nvim_create_autocmd("BufWritePost", {
+		group = augroup,
 		callback = function()
-			update_diff()
+			if vim.api.nvim_buf_is_valid(diff_bufnr) then
+				update_diff()
+			end
 		end,
 	})
+
+	-- 2) auto update diff view whenever git status is changed
+	local watcher = vim.uv.new_fs_event()
+	if watcher then
+		watcher:start(gitui.root .. '/.git/index', {}, vim.schedule_wrap(function(err, _, _)
+			if not err and vim.api.nvim_buf_is_valid(diff_bufnr) then
+				update_diff()
+			end
+		end))
+
+		vim.api.nvim_create_autocmd("BufWipeout", {
+			buffer = diff_bufnr,
+			once = true,
+			callback = function()
+				watcher:stop()
+				pcall(vim.api.nvim_del_augroup_by_id, augroup)
+			end,
+		})
+	end
 
 	return diff_bufnr
 end
