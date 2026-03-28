@@ -189,12 +189,16 @@ local function show_diff()
 	end
 	update_diff()
 
-	-- vim.api.nvim_create_autocmd("BufEnter", {
-	-- 	buffer = diff_bufnr,
-	-- 	callback = function()
-	-- 		update_diff()
-	-- 	end,
-	-- })
+	-- register autocmd to auto update git diff contents every winenter
+	-- the target buffer must have name to use it. autocmd will be removed automatically after diff_bufnr is removed
+	vim.api.nvim_create_augroup('GitUI_DiffUpdate', {clear = true})
+	vim.api.nvim_create_autocmd("WinEnter", {
+		group = 'GitUI_DiffUpdate',
+		buffer = diff_bufnr,
+		callback = function()
+			update_diff()
+		end,
+	})
 
 	return diff_bufnr
 end
@@ -250,6 +254,7 @@ local function attach_editor_handle(opts)
 							local tabpos = vim.api.nvim_tabpage_get_number(commit_tabnr)
 							pcall(function () vim.cmd('tabclose ' .. tabpos) end)
 						end
+						require('gitui.diff').clear_diffview_state()
 
 						commit_running = false
 					end)

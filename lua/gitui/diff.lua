@@ -1,5 +1,9 @@
 local M = {}
 
+---@class gitui.hunk_info
+---@field filepath string
+---@field group string staged / unstaged / untracked group
+
 ---@class gitui.diffview
 ---@field winid_commit integer? commit message window id
 ---@field winid_diff integer? diffview buffer window id
@@ -10,9 +14,12 @@ local diffview = {
 	winid_aux = nil,
 }
 
----@class gitui.hunk_info
----@field filepath string
----@field group string staged / unstaged / untracked group
+--- clear diffview state
+M.clear_diffview_state = function ()
+	for k, _ in pairs(diffview) do
+		diffview[k] = nil
+	end
+end
 
 --- get kind information from git diff header
 ---@param header string[] header string from git diff
@@ -211,10 +218,10 @@ M.create_diff = function ()
 	vim.api.nvim_set_option_value('filetype', 'diff', { buf = bufnr })
 	vim.api.nvim_set_option_value('bufhidden', 'wipe', { buf = bufnr })
 	vim.api.nvim_set_option_value('modifiable', false, { buf = bufnr })
+	vim.api.nvim_buf_set_name(bufnr, 'gitui://diff_view' .. bufnr)
 
 	vim.cmd("topleft split")
 	vim.api.nvim_set_current_buf(bufnr) -- show empty buffer in split view
-	diffview.winid_diff = vim.api.nvim_get_current_win()
 
 	-- default properties
 	vim.wo.number = true
@@ -240,6 +247,54 @@ M.create_diff = function ()
 
 	vim.api.nvim_set_current_win(diffview.winid_commit) -- restore focus to commit message
 	return bufnr
+end
+
+--- write contents to diff buffer
+---@param bufnr integer buffer if to reload view state
+---@param contents string[] diff contents
+local function write_diff(bufnr, contents, new_file_infos)
+	if not vim.api.nvim_buf_is_valid(bufnr) then return end
+
+	vim.api.nvim_buf_call(bufnr, function() -- use it to manipulate scratch buffer
+		-- save view of current window
+		local view = vim.fn.winsaveview()
+		local opened_folds = {}
+
+		-- get previous folding state
+		---@type gitui.hunk_info[]
+		local old_file_infos = vim.b[bufnr].gitui_diff_file_infos or {}
+		for key, info in pairs(old_file_infos) do
+			local lnum = tonumber(key)
+			if not lnum then return end
+			if vim.fn.foldclosed(lnum) == -1 then
+				opened_folds[info.group .. '|' .. info.filepath] = true
+			end
+		end
+
+		-- write contents to buffer
+		vim.api.nvim_set_option_value('modifiable', true, { buf = bufnr })
+		vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, contents)
+		vim.b[bufnr].gitui_diff_file_infos = new_file_infos
+
+		-- update folding tree
+		vim.cmd("normal! zx")           -- update fold by foldexpr
+		vim.wo.foldlevel = 1            -- default foldlevel
+
+		-- restore folding state, expands if it is expanded before
+		if diffview.winid_diff then
+			for key, info in pairs(new_file_infos) do
+				local lnum = tonumber(key)
+				if not lnum then return end
+				if opened_folds[info.group .. '|' .. info.filepath] then
+					vim.fn.cursor(lnum, 1)
+					pcall(function() vim.cmd("normal! zO") end)
+				end
+			end
+		end
+		vim.fn.winrestview(view)
+	end)
+
+	vim.api.nvim_set_option_value('modifiable', false, { buf = bufnr })
 end
 
 --- write diff_result to diff_bufnr
@@ -275,17 +330,8 @@ M.load_diff = function (diff_bufnr, diff_result)
 
 	-- write diff contents to buffer
 	vim.schedule(function()
-		if not vim.api.nvim_buf_is_valid(diff_bufnr) then return end
-		vim.api.nvim_set_option_value('modifiable', true, { buf = diff_bufnr }) -- unlocked
-
-		vim.api.nvim_buf_set_lines(diff_bufnr, 0, -1, false, contents) -- set contents
-		vim.b[diff_bufnr].gitui_diff_file_infos = gitui_diff_file_infos -- save diff file infos to buffer
-		vim.api.nvim_buf_call(diff_bufnr, function()
-			vim.cmd("normal! zx")           -- update fold by foldexpr
-			vim.wo.foldlevel = 1            -- default foldlevel
-		end) -- set default fold level
-
-		vim.api.nvim_set_option_value('modifiable', false, { buf = diff_bufnr }) -- locked
+		write_diff(diff_bufnr, contents, gitui_diff_file_infos)
+		diffview.winid_diff = vim.api.nvim_get_current_win()
 	end)
 end
 
