@@ -149,10 +149,10 @@ M.create_diff = function ()
 	vim.wo.foldexpr = 'v:lua._gitui_foldexpr(v:lnum)'
 	vim.wo.foldtext = 'getline(v:foldstart)'
 	vim.opt_local.fillchars:append({
-		fold = ' ',      -- 접힌 줄 빈공간 처리
-		foldopen = 'v',  -- 열렸을 때 아이콘 (statuscolumn의 %C 자리에 들어감)
-		foldclose = '>', -- 닫혔을 때 아이콘 (statuscolumn의 %C 자리에 들어감)
-		foldsep = ' ',   -- 폴딩 내부의 세로줄(|)을 빈 공간으로 깔끔하게 처리
+		fold = ' ',
+		foldopen = 'v',
+		foldclose = '>',
+		foldsep = ' ',
 	})
 
 	-- set keymaps for diff view
