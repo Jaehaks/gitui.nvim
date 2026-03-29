@@ -1,8 +1,13 @@
 local M = {}
 
+local utils = require('gitui.utils')
+local ns_id = vim.api.nvim_create_namespace('gitui_diff')
+
 ---@class gitui.hunk_info
 ---@field filepath string
 ---@field group string staged / unstaged / untracked group
+---@field kind_hl string? highlight for kind (modified / added)
+---@field kind_eidx integer? end col of kind string
 
 ---@class gitui.diffview
 ---@field winid_commit integer? commit message window id
@@ -24,27 +29,27 @@ end
 --- get kind information from git diff header
 ---@param header string[] header string from git diff
 ---@param filepath string target file path
----@return string kind, string title
+---@return string kind_hl, string title
 local function get_kind(header, filepath)
 	local from = nil
 	local to = nil
 	for _, line in ipairs(header) do
 		if line:match("^index") then
-			return "modified", "modified " .. filepath
+			return "GituiFileModified", "modified " .. filepath
 		elseif line:match("^new file") then
-			return "added", "added " .. filepath
+			return "GituiFileAdded", "added " .. filepath
 		elseif line:match("^deleted file") then
-			return "deleted", "deleted " .. filepath
+			return "GituiFileDeleted", "deleted " .. filepath
 		elseif line:match("^rename from") then
 			from = line:match("^rename from (.+)")
 		elseif line:match("^rename to") then
 			to = line:match("^rename to (.+)")
-			return "renamed", "renamed " .. from .. '  ' .. to
+			return "GituiFileRenamed", "renamed " .. from .. '  ' .. to
 		end
 	end
-	return "modified", "modified " .. filepath -- default pattern
+	return "GituiFileModified", "modified " .. filepath -- default pattern
 end
-
+-- test
 --- transform raw string result of git diff to string[]
 ---@param raw string raw stdout of git diff
 ---@param label string group label staged / unstaged / untracked
@@ -63,8 +68,13 @@ local function parse_diff(raw, label)
 
 	--- add title to fold by adding kind to filepath
 	local function add_title()
-		local _, title = get_kind(hunk_header, cur_info.filepath)
+		local kind_hl, title = get_kind(hunk_header, cur_info.filepath)
 		table.insert(lines, title)
+		cur_info.kind_hl = kind_hl
+		local _, kind_eidx = title:find('^%a+')
+		if kind_eidx then
+			cur_info.kind_eidx = kind_eidx
+		end
 		file_infos[#lines] = cur_info
 	end
 
@@ -88,6 +98,8 @@ local function parse_diff(raw, label)
 			cur_info = {
 				filepath = filepath,
 				group = label,
+				kind_hl = nil,
+				kind_eidx = nil,
 			}
 
 		-- 3) check start hunk. Getting header is finished
@@ -212,7 +224,6 @@ end
 --- create buffer showing git diff
 ---@return integer buffer id of diff view
 M.create_diff = function ()
-
 	diffview.winid_commit = vim.api.nvim_get_current_win() -- set window id of commit message
 	local bufnr = vim.api.nvim_create_buf(false, true) -- make unlisted scratch buffer
 	vim.api.nvim_set_option_value('filetype', 'diff', { buf = bufnr })
@@ -233,13 +244,9 @@ M.create_diff = function ()
 	-- set fold properties
 	vim.wo.foldmethod = 'expr'
 	vim.wo.foldexpr = 'v:lua._gitui_foldexpr(v:lnum)'
-	vim.wo.foldtext = 'getline(v:foldstart)'
-	vim.opt_local.fillchars:append({
-		fold = ' ',
-		foldopen = 'v',
-		foldclose = '>',
-		foldsep = ' ',
-	})
+	vim.wo.foldtext = '' -- To retain highlight setting as plugin set
+	utils.update_win_option(0, 'fillchars', {fold = ' ', foldopen = 'v', foldclose = '>', foldsep = ' '}) -- remove fill chars of fold
+	utils.update_win_option(0, 'winhighlight', {Folded = 'GituiFoldNone'}) -- disable default fold highlight
 
 	-- set keymaps for diff view
 	vim.keymap.set('n', '<Tab>', toggle_fold, { buffer = bufnr, silent = true, desc = '[gitui.nvim] Toggle Fold' })
@@ -252,7 +259,9 @@ end
 --- write contents to diff buffer
 ---@param bufnr integer buffer if to reload view state
 ---@param contents string[] diff contents
-local function write_diff(bufnr, contents, new_file_infos)
+---@param new_file_infos gitui.hunk_info[] diff contents
+---@param group_hl_infos gitui.hunk_info[] diff contents
+local function write_diff(bufnr, contents, new_file_infos, group_hl_infos)
 	if not vim.api.nvim_buf_is_valid(bufnr) then return end
 
 	vim.api.nvim_buf_call(bufnr, function() -- use it to manipulate scratch buffer
@@ -276,12 +285,30 @@ local function write_diff(bufnr, contents, new_file_infos)
 		vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, contents)
 		vim.b[bufnr].gitui_diff_file_infos = new_file_infos
 
+		-- set highlight
+		-- 1) group title
+		vim.api.nvim_buf_clear_namespace(bufnr, ns_id, 0, -1) -- clear previous highlight
+		for lnum, _ in pairs(group_hl_infos) do
+			vim.api.nvim_buf_set_extmark(bufnr, ns_id, lnum-1, 0, { -- extmark is 0-index
+				line_hl_group = 'GituiGroupTitle',
+				hl_eol = true,
+			})
+		end
+		-- 2) file title
+		for key, info in pairs(new_file_infos) do
+			local lnum = tostring(key)
+			vim.api.nvim_buf_set_extmark(bufnr, ns_id, lnum-1, 0, {
+				hl_group = info.kind_hl,
+				end_col = info.kind_eidx,
+			})
+		end
+
 		-- update folding tree
 		vim.cmd("normal! zx")           -- update fold by foldexpr
 		vim.wo.foldlevel = 1            -- default foldlevel
 
 		-- restore folding state, expands if it is expanded before
-		if diffview.winid_diff then
+		if diffview.winid_diff then -- restore it after second update
 			for key, info in pairs(new_file_infos) do
 				local lnum = tonumber(key)
 				if not lnum then return end
@@ -291,6 +318,7 @@ local function write_diff(bufnr, contents, new_file_infos)
 				end
 			end
 		end
+		diffview.winid_diff = vim.api.nvim_get_current_win()
 		vim.fn.winrestview(view)
 	end)
 
@@ -310,11 +338,13 @@ M.load_diff = function (diff_bufnr, diff_result)
 	-- parse and modify git results to use in nvim_buf_set_lines() and fold
 	local contents = {}
 	---@type gitui.hunk_info[]
-	local gitui_diff_file_infos = {} -- combination with all group file_infos
+	local gitui_diff_file_infos = {} 	-- combination with all group file_infos
+	local group_hl_infos = {} 			-- group title line information for highlight
 	local function add_contents(str, label)
 		local parsed, file_infos = parse_diff(str, label)
 		if #parsed>0 then
 			table.insert(contents, label .. ' files ' .. '(' .. vim.tbl_count(file_infos) .. ')') -- add group title
+			group_hl_infos[#contents] = label
 			local offset = #contents
 			vim.list_extend(contents, parsed)
 			table.insert(contents, '') -- add new line between groups
@@ -330,8 +360,7 @@ M.load_diff = function (diff_bufnr, diff_result)
 
 	-- write diff contents to buffer
 	vim.schedule(function()
-		write_diff(diff_bufnr, contents, gitui_diff_file_infos)
-		diffview.winid_diff = vim.api.nvim_get_current_win()
+		write_diff(diff_bufnr, contents, gitui_diff_file_infos, group_hl_infos)
 	end)
 end
 
