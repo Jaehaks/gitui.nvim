@@ -10,6 +10,7 @@ local M = {}
 local gitui = {
 	bufnr = nil,
 	tabnr = nil,
+	winnr = nil,
 	jobnr = nil,
 	root = nil,
 }
@@ -38,10 +39,17 @@ end
 
 
 ---@param bufnr integer buffer number
-local function set_terminal_options(bufnr)
+local function set_terminal_options(bufnr, winnr)
+	bufnr = bufnr or 0
+	winnr = winnr or 0
 	-- 'bufhidden' of terminal buffer is ignored. it operates 'wipe' only
 	-- 'swapfile' of terminal buffer is false as default
 	vim.api.nvim_set_option_value('buflisted', false, {buf = bufnr}) -- don't show in :ls
+	-- don't show statuscolumn in terminal buffer
+	vim.api.nvim_set_option_value('number', false, {win = winnr}) -- don't show in :ls
+	vim.api.nvim_set_option_value('relativenumber', false, {win = winnr}) -- don't show in :ls
+	vim.api.nvim_set_option_value('signcolumn', 'no', {win = winnr}) -- don't show in :ls
+	vim.api.nvim_set_option_value('statuscolumn', "", {win = winnr}) -- don't show in :ls
 end
 
 --- terminal gitui terminal
@@ -335,6 +343,7 @@ function M.open(opts)
 	vim.cmd("tabnew")
 	gitui.tabnr = vim.api.nvim_get_current_tabpage()
 	gitui.bufnr = vim.api.nvim_get_current_buf()
+	gitui.winnr = vim.api.nvim_get_current_win()
 
 	-- set autocmd to enter terminal mode automatically
 	if opts.delay_startinsert then
@@ -342,7 +351,7 @@ function M.open(opts)
 	end
 
 	-- set terminal buffer property
-	set_terminal_options(gitui.bufnr)
+	set_terminal_options()
 
 	-- set editor cmd to connect commit editor to this neovim
 	-- --remote <file> : the <file> must be absolute file path. If it is relative one, empty file will be open
