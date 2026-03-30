@@ -25,6 +25,7 @@ M.set = function (opts)
 	vim.api.nvim_set_hl(0, 'GituiFileDeleted',  { fg = '#8b8b8b', italic = true })
 	vim.api.nvim_set_hl(0, 'GituiFileRenamed',  { fg = '#00aaff', italic = true })
 	vim.api.nvim_set_hl(0, 'GituiFoldNone',  	{ fg = 'None', bg = 'None' })
+	vim.api.nvim_set_hl(0, 'GituiFoldIcon',  	{ link = 'Comment', default = true})
 end
 
 return M

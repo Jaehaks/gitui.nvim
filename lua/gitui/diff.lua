@@ -238,15 +238,35 @@ M.create_diff = function ()
 	vim.wo.number = true
 	vim.wo.relativenumber = true
 	vim.wo.signcolumn = 'yes'
-	vim.wo.foldcolumn = '0'
-	vim.wo.statuscolumn = ''
+	vim.cmd([[
+		function! GituiFoldIcon(lnum)
+			" first line of closed line
+			if foldclosed(a:lnum) == a:lnum
+				return '>'
+			endif
+
+			" if fold is opened
+			if foldclosed(a:lnum) == -1
+				let l:line = getline(a:lnum)
+				if l:line =~# '^\(Staged\|Unstaged\|Untracked\|modified\|added\|deleted\|renamed\|\s*@@\)'
+					return 'v'
+				endif
+			endif
+
+			" other case is empty
+			return ' '
+		endfunction
+	]])
+	-- colorize fold sign
+	vim.wo.statuscolumn = "%=%l %#GituiFoldIcon#%{GituiFoldIcon(v:lnum)}%* "
 
 	-- set fold properties
 	vim.wo.foldmethod = 'expr'
 	vim.wo.foldexpr = 'v:lua._gitui_foldexpr(v:lnum)'
 	vim.wo.foldtext = '' -- To retain highlight setting as plugin set
 	utils.update_win_option(0, 'fillchars', {fold = ' ', foldopen = 'v', foldclose = '>', foldsep = ' '}) -- remove fill chars of fold
-	utils.update_win_option(0, 'winhighlight', {Folded = 'GituiFoldNone'}) -- disable default fold highlight
+	-- disable default fold highlight(Folded), and foldcolumn highlight(FoldColumn)
+	utils.update_win_option(0, 'winhighlight', {Folded = 'GituiFoldNone', FoldColumn = 'GituiFoldNone'})
 
 	-- set keymaps for diff view
 	vim.keymap.set('n', '<Tab>', toggle_fold, { buffer = bufnr, silent = true, desc = '[gitui.nvim] Toggle Fold' })
