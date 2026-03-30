@@ -1,11 +1,11 @@
 local M = {}
 
 ---@class gitui.config
----@field delay_startinsert integer? [ms] delay from opening terminal to setting controllable state, set nil to disable
 ---@field theme_path string? theme.ron path for gitui
+---@field delay_startinsert integer? [ms] delay from opening terminal to setting controllable state, set nil to disable
 local default_config = {
-	delay_startinsert = 50,
 	theme_path = nil,
+	delay_startinsert = 50,
 }
 
 local config = vim.deepcopy(default_config)
