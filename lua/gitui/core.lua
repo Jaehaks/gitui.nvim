@@ -61,6 +61,11 @@ local function terminate_term()
 	-- INFO: Using :bwipeout remove terminal buffer immediately and wipe it form buflist
 	-- INFO: So it needs to use :bwipeout only to close terminal
 
+	-- terminate gitui process
+	if gitui.jobnr then
+		pcall(vim.fn.jobstop, gitui.jobnr)
+	end
+
 	-- remove buffer
 	if gitui.bufnr and vim.api.nvim_buf_is_valid(gitui.bufnr) then
 		-- disable autocmd for editor opener
@@ -68,6 +73,13 @@ local function terminate_term()
 		if not ok2 then
 			vim.notify('GitUI_OpenEditor autocmd cannot be removed', vim.log.levels.WARN)
 		end
+
+		-- close tab
+		if vim.api.nvim_tabpage_is_valid(gitui.tabnr) then
+			local tab_pos = vim.api.nvim_tabpage_get_number(gitui.tabnr)
+			pcall(function () vim.cmd('tabclose ' .. tab_pos) end)
+		end
+
 		-- wipe out gitui terminal buffer form buffer list (nvim_buf_delete() cannot wipe out)
 		-- bwipeout invokes BufEnter. I have no idea why his appends
 		local ok = pcall(function () vim.cmd('silent! bwipeout! ' .. gitui.bufnr) end)
