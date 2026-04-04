@@ -276,6 +276,11 @@ local function attach_editor_handle(opts)
 				vim.api.nvim_set_current_buf(args.buf)
 				vim.api.nvim_set_option_value('filetype', 'gitcommit', {buf = args.buf})
 				vim.api.nvim_set_option_value('bufhidden', 'wipe', {buf = args.buf}) -- invoke BufDelete event when :wq
+				vim.wo.number = vim.wo[prevbuf.winnr].number
+				vim.wo.relativenumber = vim.wo[prevbuf.winnr].relativenumber
+				vim.wo.signcolumn = vim.wo[prevbuf.winnr].signcolumn
+				vim.wo.foldcolumn = vim.wo[prevbuf.winnr].foldcolumn
+				vim.wo.statuscolumn = vim.wo[prevbuf.winnr].statuscolumn
 				local commit_tabnr = vim.api.nvim_get_current_tabpage()
 
 				-- show diff view
