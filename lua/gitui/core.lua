@@ -15,14 +15,29 @@ local gitui = {
 	root = nil,
 }
 
+---@class prevbuf_state.win_opts
+---@field number boolean?
+---@field relativenumber boolean?
+---@field signcolumn string?
+---@field foldcolumn string?
+---@field statuscolumn string?
+
 ---@class prevbuf_state previous buffer state to open editor from gitui
 ---@field tabnr integer?
 ---@field winr integer?
+---@field win_opts prevbuf_state.win_opts
 
 ---@type prevbuf_state
 local prevbuf = {
 	tabnr = nil,
 	winnr = nil,
+	win_opts = {
+		number = nil,
+		relativenumber = nil,
+		signcolumn = nil,
+		foldcolumn = nil,
+		statuscolumn = nil,
+	}
 }
 
 local plugin_root = vim.fs.root(debug.getinfo(1, "S").source:sub(2), {'.git'}) or ""
@@ -276,11 +291,11 @@ local function attach_editor_handle(opts)
 				vim.api.nvim_set_current_buf(args.buf)
 				vim.api.nvim_set_option_value('filetype', 'gitcommit', {buf = args.buf})
 				vim.api.nvim_set_option_value('bufhidden', 'wipe', {buf = args.buf}) -- invoke BufDelete event when :wq
-				vim.wo.number = vim.wo[prevbuf.winnr].number
-				vim.wo.relativenumber = vim.wo[prevbuf.winnr].relativenumber
-				vim.wo.signcolumn = vim.wo[prevbuf.winnr].signcolumn
-				vim.wo.foldcolumn = vim.wo[prevbuf.winnr].foldcolumn
-				vim.wo.statuscolumn = vim.wo[prevbuf.winnr].statuscolumn
+				vim.api.nvim_set_option_value('number', prevbuf.win_opts.number, {win = 0})
+				vim.api.nvim_set_option_value('relativenumber', prevbuf.win_opts.relativenumber, {win = 0})
+				vim.api.nvim_set_option_value('signcolumn', prevbuf.win_opts.signcolumn, {win = 0})
+				vim.api.nvim_set_option_value('foldcolumn', prevbuf.win_opts.foldcolumn, {win = 0})
+				vim.api.nvim_set_option_value('statuscolumn', prevbuf.win_opts.statuscolumn, {win = 0})
 				local commit_tabnr = vim.api.nvim_get_current_tabpage()
 
 				-- show diff view
@@ -318,17 +333,23 @@ local function attach_editor_handle(opts)
 
 			-- If it is normal file opening
 			else
-				-- -- set args.buf's location to previous tab page
-				if prevbuf.tabnr and vim.api.nvim_tabpage_is_valid(prevbuf.tabnr) then
-					vim.api.nvim_set_current_tabpage(prevbuf.tabnr)
-					if prevbuf.winnr and vim.api.nvim_win_is_valid(prevbuf.winnr) then
-						vim.api.nvim_set_current_win(prevbuf.winnr)
+				-- set args.buf's location to previous tab page
+				vim.schedule(function ()
+					if prevbuf.tabnr and vim.api.nvim_tabpage_is_valid(prevbuf.tabnr) then
+						vim.api.nvim_set_current_tabpage(prevbuf.tabnr)
+						if prevbuf.winnr and vim.api.nvim_win_is_valid(prevbuf.winnr) then
+							vim.api.nvim_set_current_win(prevbuf.winnr)
+							vim.api.nvim_set_option_value('number', prevbuf.win_opts.number, {win = prevbuf.winnr})
+							vim.api.nvim_set_option_value('relativenumber', prevbuf.win_opts.relativenumber, {win = prevbuf.winnr})
+							vim.api.nvim_set_option_value('signcolumn', prevbuf.win_opts.signcolumn, {win = prevbuf.winnr})
+							vim.api.nvim_set_option_value('statuscolumn', prevbuf.win_opts.statuscolumn, {win = prevbuf.winnr})
+						end
 					end
-				end
-				vim.api.nvim_set_current_buf(args.buf)
+					vim.api.nvim_set_current_buf(args.buf)
 
-				-- terminate gitui
-				terminate_term()
+					-- terminate gitui
+					terminate_term()
+				end)
 			end
 		end,
 	})
@@ -355,6 +376,11 @@ function M.open(opts)
 	-- save current buffer state for editor
 	prevbuf.tabnr = vim.api.nvim_get_current_tabpage()
 	prevbuf.winnr = vim.api.nvim_get_current_win()
+	prevbuf.win_opts.number = vim.api.nvim_get_option_value('number', {win = prevbuf.winnr})
+	prevbuf.win_opts.relativenumber = vim.api.nvim_get_option_value('relativenumber', {win = prevbuf.winnr})
+	prevbuf.win_opts.signcolumn = vim.api.nvim_get_option_value('signcolumn', {win = prevbuf.winnr})
+	prevbuf.win_opts.foldcolumn = vim.api.nvim_get_option_value('foldcolumn', {win = prevbuf.winnr})
+	prevbuf.win_opts.statuscolumn = vim.api.nvim_get_option_value('statuscolumn', {win = prevbuf.winnr})
 
 	-- open new tab
 	vim.cmd("tabnew")
@@ -368,7 +394,7 @@ function M.open(opts)
 	end
 
 	-- set terminal buffer property
-	set_terminal_options()
+	set_terminal_options(gitui.bufnr, gitui.winnr)
 
 	-- set editor cmd to connect commit editor to this neovim
 	-- --remote <file> : the <file> must be absolute file path. If it is relative one, empty file will be open
