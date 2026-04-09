@@ -2,6 +2,8 @@
 
 [gitui](https://github.com/extrawurst/gitui) integration for Neovim.
 
+https://github.com/user-attachments/assets/cf284842-0c01-4b24-a8fa-524f17723ae5
+
 ---
 
 ## Why?
